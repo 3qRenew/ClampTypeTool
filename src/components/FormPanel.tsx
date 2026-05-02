@@ -1,5 +1,6 @@
 import React from 'react';
-import type { AppState, ClampMode, PropertyType, FontType, TwoPointConfig, EstimateConfig } from '../types';
+import type { AppState, ClampMode, PropertyType, SingleConfig, SegmentConfig, OutputUnitMode } from '../types';
+import { getStrategyForPropertyType, CATEGORY_LABELS } from '../data/unitStrategy';
 
 interface Props {
   state: AppState;
@@ -8,7 +9,7 @@ interface Props {
 
 // ── Preset definitions ──
 
-interface TwoPointPreset {
+interface SinglePreset {
   label: string;
   sub: string;
   propertyType: PropertyType;
@@ -16,236 +17,319 @@ interface TwoPointPreset {
   mobileDesignValue: number;
 }
 
-const TYPOGRAPHY_PRESETS: TwoPointPreset[] = [
-  { label: 'Hero Title', sub: '66→55', propertyType: 'font-size', desktopValue: 66, mobileDesignValue: 55 },
-  { label: 'Body Large', sub: '24→18', propertyType: 'font-size', desktopValue: 24, mobileDesignValue: 18 },
-  { label: 'Body Normal', sub: '20→16', propertyType: 'font-size', desktopValue: 20, mobileDesignValue: 16 },
-  { label: 'Heading', sub: '48→34', propertyType: 'font-size', desktopValue: 48, mobileDesignValue: 34 },
+const TYPOGRAPHY_PRESETS: SinglePreset[] = [
+  { label: 'Hero Title',   sub: '66→55', propertyType: 'font-size', desktopValue: 66,  mobileDesignValue: 55 },
+  { label: 'Body Large',   sub: '24→18', propertyType: 'font-size', desktopValue: 24,  mobileDesignValue: 18 },
+  { label: 'Body Normal',  sub: '20→16', propertyType: 'font-size', desktopValue: 20,  mobileDesignValue: 16 },
+  { label: 'Heading',      sub: '48→34', propertyType: 'font-size', desktopValue: 48,  mobileDesignValue: 34 },
 ];
 
-const SPACING_PRESETS: TwoPointPreset[] = [
-  { label: 'Section Y', sub: '120→64', propertyType: 'margin-top', desktopValue: 120, mobileDesignValue: 64 },
-  { label: 'Block Gap', sub: '48→24', propertyType: 'gap', desktopValue: 48, mobileDesignValue: 24 },
-  { label: 'Card Padding', sub: '40→20', propertyType: 'padding-top', desktopValue: 40, mobileDesignValue: 20 },
-  { label: 'Content Offset', sub: '80→32', propertyType: 'margin-top', desktopValue: 80, mobileDesignValue: 32 },
+const SPACING_PRESETS: SinglePreset[] = [
+  { label: 'Section Y',      sub: '120→64', propertyType: 'spacing', desktopValue: 120, mobileDesignValue: 64 },
+  { label: 'Block Gap',      sub: '48→24',  propertyType: 'spacing', desktopValue: 48,  mobileDesignValue: 24 },
+  { label: 'Card Padding',   sub: '40→20',  propertyType: 'spacing', desktopValue: 40,  mobileDesignValue: 20 },
+  { label: 'Content Offset', sub: '80→32',  propertyType: 'spacing', desktopValue: 80,  mobileDesignValue: 32 },
 ];
 
-interface EstimatePreset {
+interface DualPreset {
   label: string;
-  partial: Pick<EstimateConfig, 'designSize' | 'type'>;
+  sub: string;
+  propertyType: PropertyType;
+  portrait: SegmentConfig;
+  landscape: SegmentConfig;
 }
 
-const ESTIMATE_PRESETS: EstimatePreset[] = [
-  { label: 'Body / 24', partial: { designSize: 24, type: 'body' } },
-  { label: 'Body / 20', partial: { designSize: 20, type: 'body' } },
-  { label: 'Lead / 24', partial: { designSize: 24, type: 'lead' } },
-  { label: 'Heading / 36', partial: { designSize: 36, type: 'heading' } },
-  { label: 'Heading / 48', partial: { designSize: 48, type: 'heading' } },
+const DUAL_PRESETS: DualPreset[] = [
+  {
+    label: 'Body Text',
+    sub: '直9.6→25 / 橫9.3→18',
+    propertyType: 'font-size',
+    portrait:  { minViewport: 375, minValue: 9.6, maxViewport: 991, maxValue: 25 },
+    landscape: { minViewport: 992, minValue: 9.3, maxViewport: 1920, maxValue: 18 },
+  },
+  {
+    label: 'Heading LG',
+    sub: '直14→36 / 橫12→28',
+    propertyType: 'font-size',
+    portrait:  { minViewport: 375, minValue: 14, maxViewport: 991, maxValue: 36 },
+    landscape: { minViewport: 992, minValue: 12, maxViewport: 1920, maxValue: 28 },
+  },
+  {
+    label: 'Section Spacing',
+    sub: '直24→64 / 橫32→120',
+    propertyType: 'spacing',
+    portrait:  { minViewport: 375, minValue: 24, maxViewport: 991, maxValue: 64 },
+    landscape: { minViewport: 992, minValue: 32, maxViewport: 1920, maxValue: 120 },
+  },
 ];
 
-const PROPERTY_OPTIONS: { value: PropertyType; label: string; category: 'typography' | 'spacing' }[] = [
-  { value: 'font-size', label: 'Font Size', category: 'typography' },
-  { value: 'margin-top', label: 'Margin Top', category: 'spacing' },
-  { value: 'margin-bottom', label: 'Margin Bottom', category: 'spacing' },
-  { value: 'padding-top', label: 'Padding Top', category: 'spacing' },
-  { value: 'padding-bottom', label: 'Padding Bottom', category: 'spacing' },
-  { value: 'gap', label: 'Gap', category: 'spacing' },
+const PROPERTY_OPTIONS: { value: PropertyType; label: string }[] = [
+  { value: 'font-size', label: 'Font Size' },
+  { value: 'spacing',   label: 'Spacing'   },
 ];
 
-const FONT_TYPES: FontType[] = ['body', 'lead', 'heading'];
+// ── Helpers ──
+
+const CLAMP_POLICY_LABELS: Record<string, string> = {
+  always:     'clamp() 推薦',
+  'large-only': 'clamp() 大型間距',
+  avoid:      'clamp() 不適用',
+};
+const CLAMP_POLICY_CLASSES: Record<string, string> = {
+  always:     'policy-always',
+  'large-only': 'policy-large',
+  avoid:      'policy-avoid',
+};
 
 // ── Component ──
 
 export const FormPanel: React.FC<Props> = ({ state, onStateChange }) => {
-  const { mode, twoPoint, estimate } = state;
+  const { mode, single, dual } = state;
 
   const setMode = (m: ClampMode) => onStateChange({ ...state, mode: m });
 
-  const setTP = (key: keyof TwoPointConfig, raw: string) => {
+  const setS = (key: keyof SingleConfig, raw: string) => {
     const value = key === 'propertyType' ? raw : parseFloat(raw) || 0;
-    onStateChange({ ...state, twoPoint: { ...twoPoint, [key]: value } });
+    onStateChange({ ...state, single: { ...single, [key]: value } });
   };
 
-  const setEst = (key: keyof EstimateConfig, raw: string) => {
-    const value = key === 'type' ? raw : parseFloat(raw) || 0;
-    onStateChange({ ...state, estimate: { ...estimate, [key]: value } });
-  };
+  const setDualProp = (pt: PropertyType) =>
+    onStateChange({ ...state, dual: { ...dual, propertyType: pt } });
 
-  const applyTwoPointPreset = (p: TwoPointPreset) => {
+  const setSegment = (seg: 'portrait' | 'landscape', key: keyof SegmentConfig, raw: string) => {
+    const value = parseFloat(raw) || 0;
     onStateChange({
       ...state,
-      mode: 'two-point',
-      twoPoint: {
-        ...twoPoint,
+      dual: { ...dual, [seg]: { ...dual[seg], [key]: value } },
+    });
+  };
+
+  const setOutputUnitMode = (m: OutputUnitMode) =>
+    onStateChange({ ...state, outputUnitMode: m });
+
+  const applySinglePreset = (p: SinglePreset) => {
+    onStateChange({
+      ...state,
+      mode: 'single',
+      single: {
+        ...single,
         propertyType: p.propertyType,
         desktopValue: p.desktopValue,
         mobileDesignValue: p.mobileDesignValue,
         desktopViewportWidth: 1920,
         mobileDesignWidth: 610,
-        // keep mobileTargetWidth as-is (user's choice)
       },
     });
   };
 
+  const applyDualPreset = (p: DualPreset) => {
+    onStateChange({
+      ...state,
+      mode: 'dual',
+      dual: { propertyType: p.propertyType, portrait: p.portrait, landscape: p.landscape },
+    });
+  };
+
+  const activePropertyType = mode === 'dual' ? dual.propertyType : single.propertyType;
+  const strategy = getStrategyForPropertyType(activePropertyType);
+
   return (
     <div className="form-panel">
-      {/* Mode switch */}
+      {/* Mode tabs */}
       <div className="mode-tabs">
-        <button
-          className={`mode-tab${mode === 'two-point' ? ' active' : ''}`}
-          onClick={() => setMode('two-point')}
-        >
-          Two-point
-        </button>
-        <button
-          className={`mode-tab${mode === 'estimate' ? ' active' : ''}`}
-          onClick={() => setMode('estimate')}
-        >
-          Estimate
-        </button>
+        {(['single', 'dual'] as ClampMode[]).map((m) => (
+          <button
+            key={m}
+            className={`mode-tab${mode === m ? ' active' : ''}`}
+            onClick={() => setMode(m)}
+          >
+            {m === 'single' ? 'Single' : 'Dual'}
+          </button>
+        ))}
       </div>
 
-      {mode === 'two-point' && (
-        <>
-          {/* Property type */}
-          <div className="section-label">Property</div>
-          <Field label="propertyType">
-            <select
-              value={twoPoint.propertyType}
-              onChange={(e) => setTP('propertyType', e.target.value)}
-            >
-              <optgroup label="Typography">
-                {PROPERTY_OPTIONS.filter((o) => o.category === 'typography').map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </optgroup>
-              <optgroup label="Spacing">
-                {PROPERTY_OPTIONS.filter((o) => o.category === 'spacing').map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </optgroup>
-            </select>
-          </Field>
+      {/* Property selector */}
+      <div className="section-label">Property</div>
+      <Field label="propertyType">
+        <select
+          value={activePropertyType}
+          onChange={(e) =>
+            mode === 'dual'
+              ? setDualProp(e.target.value as PropertyType)
+              : setS('propertyType', e.target.value)
+          }
+        >
+          {PROPERTY_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </Field>
 
-          {/* Typography presets */}
+      {/* Strategy card */}
+      {strategy && (
+        <div className="strategy-card">
+          <div className="strategy-card-header">
+            <span className="strategy-category">{CATEGORY_LABELS[strategy.category]}</span>
+            {strategy.clampPolicy && (
+              <span className={`strategy-policy ${CLAMP_POLICY_CLASSES[strategy.clampPolicy]}`}>
+                {CLAMP_POLICY_LABELS[strategy.clampPolicy]}
+              </span>
+            )}
+          </div>
+          <div className="strategy-units-row">
+            <span className="strategy-units-label">建議</span>
+            <span className="strategy-units">
+              {strategy.recommendedUnits.map((u) => (
+                <code key={u} className="unit-chip unit-chip-ok">{u}</code>
+              ))}
+            </span>
+          </div>
+          <div className="strategy-units-row">
+            <span className="strategy-units-label">避免</span>
+            <span className="strategy-units">
+              {strategy.avoidUnits.map((u) => (
+                <code key={u} className="unit-chip unit-chip-avoid">{u}</code>
+              ))}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Output unit */}
+      <div className="section-label">Output Unit</div>
+      <div className="output-unit-tabs">
+        {(['auto', 'px', 'rem'] as OutputUnitMode[]).map((m) => (
+          <button
+            key={m}
+            className={`output-unit-tab${state.outputUnitMode === m ? ' active' : ''}`}
+            onClick={() => setOutputUnitMode(m)}
+          >
+            {m === 'auto' ? 'Auto' : m.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      {/* ── SINGLE MODE ── */}
+      {mode === 'single' && (
+        <>
           <div className="section-label">Typography Presets</div>
           <div className="preset-grid">
             {TYPOGRAPHY_PRESETS.map((p) => (
-              <button key={p.label} className="preset-btn" onClick={() => applyTwoPointPreset(p)}>
+              <button key={p.label} className="preset-btn" onClick={() => applySinglePreset(p)}>
                 <span className="preset-name">{p.label}</span>
                 <span className="preset-sub">{p.sub}</span>
               </button>
             ))}
           </div>
 
-          {/* Spacing presets */}
           <div className="section-label">Spacing Presets</div>
           <div className="preset-grid">
             {SPACING_PRESETS.map((p) => (
-              <button key={p.label} className="preset-btn" onClick={() => applyTwoPointPreset(p)}>
+              <button key={p.label} className="preset-btn" onClick={() => applySinglePreset(p)}>
                 <span className="preset-name">{p.label}</span>
                 <span className="preset-sub">{p.sub}</span>
               </button>
             ))}
           </div>
 
-          {/* Desktop */}
           <div className="section-label">Desktop</div>
-          <Field label="Desktop Width" unit="px">
-            <input type="number" min={1} step={1} value={twoPoint.desktopViewportWidth}
-              onChange={(e) => setTP('desktopViewportWidth', e.target.value)} />
+          <Field label="Viewport Width" unit="px">
+            <input type="number" min={1} step={1} value={single.desktopViewportWidth}
+              onChange={(e) => setS('desktopViewportWidth', e.target.value)} />
           </Field>
-          <Field label="Desktop Value" unit="px">
-            <input type="number" min={0} step={0.5} value={twoPoint.desktopValue}
-              onChange={(e) => setTP('desktopValue', e.target.value)} />
+          <Field label="Value" unit="px">
+            <input type="number" min={0} step={0.5} value={single.desktopValue}
+              onChange={(e) => setS('desktopValue', e.target.value)} />
           </Field>
 
-          {/* Mobile design */}
           <div className="section-label">Mobile Design</div>
-          <Field label="Mobile Design Width" unit="px" hint="設計稿寬">
-            <input type="number" min={1} step={1} value={twoPoint.mobileDesignWidth}
-              onChange={(e) => setTP('mobileDesignWidth', e.target.value)} />
+          <Field label="Artboard Width" unit="px" hint="設計稿寬">
+            <input type="number" min={1} step={1} value={single.mobileDesignWidth}
+              onChange={(e) => setS('mobileDesignWidth', e.target.value)} />
           </Field>
-          <Field label="Mobile Design Value" unit="px">
-            <input type="number" min={0} step={0.5} value={twoPoint.mobileDesignValue}
-              onChange={(e) => setTP('mobileDesignValue', e.target.value)} />
+          <Field label="Value" unit="px">
+            <input type="number" min={0} step={0.5} value={single.mobileDesignValue}
+              onChange={(e) => setS('mobileDesignValue', e.target.value)} />
           </Field>
 
-          {/* Mobile target */}
           <div className="section-label">Mobile Target</div>
           <div className="target-width-btns">
             {([375, 390, 414] as const).map((w) => (
               <button
                 key={w}
-                className={`target-btn${twoPoint.mobileTargetWidth === w ? ' active' : ''}`}
-                onClick={() => setTP('mobileTargetWidth', String(w))}
+                className={`target-btn${single.mobileTargetWidth === w ? ' active' : ''}`}
+                onClick={() => setS('mobileTargetWidth', String(w))}
               >
                 {w}
               </button>
             ))}
           </div>
-          <Field label="Mobile Target Width" unit="px" hint="實際 viewport">
-            <input type="number" min={1} step={1} value={twoPoint.mobileTargetWidth}
-              onChange={(e) => setTP('mobileTargetWidth', e.target.value)} />
+          <Field label="Viewport Width" unit="px" hint="實際 viewport">
+            <input type="number" min={1} step={1} value={single.mobileTargetWidth}
+              onChange={(e) => setS('mobileTargetWidth', e.target.value)} />
           </Field>
         </>
       )}
 
-      {mode === 'estimate' && (
+      {/* ── DUAL MODE ── */}
+      {mode === 'dual' && (
         <>
-          <div className="section-label">快速預設</div>
+          <div className="section-label">Presets</div>
           <div className="preset-grid">
-            {ESTIMATE_PRESETS.map((p) => (
-              <button
-                key={p.label}
-                className="preset-btn"
-                onClick={() =>
-                  onStateChange({ ...state, estimate: { ...estimate, ...p.partial } })
-                }
-              >
-                {p.label}
+            {DUAL_PRESETS.map((p) => (
+              <button key={p.label} className="preset-btn" onClick={() => applyDualPreset(p)}>
+                <span className="preset-name">{p.label}</span>
+                <span className="preset-sub dual-sub">{p.sub}</span>
               </button>
             ))}
           </div>
 
-          <div className="section-label">字級設定</div>
-          <Field label="designSize" unit="pt">
-            <input type="number" min={1} step={1} value={estimate.designSize}
-              onChange={(e) => setEst('designSize', e.target.value)} />
-          </Field>
-          <Field label="type">
-            <select value={estimate.type} onChange={(e) => setEst('type', e.target.value)}>
-              {FONT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </Field>
-          <Field label="minFontSize" unit="px" hint="0=自動">
-            <input type="number" min={0} step={0.5} value={estimate.minFontSize}
-              onChange={(e) => setEst('minFontSize', e.target.value)} />
-          </Field>
-          <Field label="maxFontSize" unit="px" hint="0=自動">
-            <input type="number" min={0} step={0.5} value={estimate.maxFontSize}
-              onChange={(e) => setEst('maxFontSize', e.target.value)} />
-          </Field>
+          {/* Portrait segment */}
+          <div className="section-label segment-label-portrait">直向 Portrait</div>
+          <div className="segment-grid">
+            <Field label="Min Viewport" unit="px">
+              <input type="number" min={1} step={1} value={dual.portrait.minViewport}
+                onChange={(e) => setSegment('portrait', 'minViewport', e.target.value)} />
+            </Field>
+            <Field label="Min Value" unit="px">
+              <input type="number" min={0} step={0.1} value={dual.portrait.minValue}
+                onChange={(e) => setSegment('portrait', 'minValue', e.target.value)} />
+            </Field>
+            <Field label="Max Viewport" unit="px">
+              <input type="number" min={1} step={1} value={dual.portrait.maxViewport}
+                onChange={(e) => setSegment('portrait', 'maxViewport', e.target.value)} />
+            </Field>
+            <Field label="Max Value" unit="px">
+              <input type="number" min={0} step={0.1} value={dual.portrait.maxValue}
+                onChange={(e) => setSegment('portrait', 'maxValue', e.target.value)} />
+            </Field>
+          </div>
 
-          <div className="section-label">Viewport</div>
-          <Field label="baseViewport" unit="px">
-            <input type="number" min={320} step={1} value={estimate.baseViewport}
-              onChange={(e) => setEst('baseViewport', e.target.value)} />
-          </Field>
-          <Field label="minViewport" unit="px">
-            <input type="number" min={320} step={1} value={estimate.minViewport}
-              onChange={(e) => setEst('minViewport', e.target.value)} />
-          </Field>
-          <Field label="maxViewport" unit="px">
-            <input type="number" min={320} step={1} value={estimate.maxViewport}
-              onChange={(e) => setEst('maxViewport', e.target.value)} />
-          </Field>
+          {/* Breakpoint display */}
+          <div className="breakpoint-divider">
+            <span className="breakpoint-label">@media (min-width: {dual.landscape.minViewport}px)</span>
+          </div>
 
-          <div className="section-label">調整</div>
-          <Field label="vwScale" hint="預設 0.8">
-            <input type="number" min={0.1} max={2} step={0.05} value={estimate.vwScale}
-              onChange={(e) => setEst('vwScale', e.target.value)} />
-          </Field>
+          {/* Landscape segment */}
+          <div className="section-label segment-label-landscape">橫向 Landscape</div>
+          <div className="segment-grid">
+            <Field label="Min Viewport" unit="px">
+              <input type="number" min={1} step={1} value={dual.landscape.minViewport}
+                onChange={(e) => setSegment('landscape', 'minViewport', e.target.value)} />
+            </Field>
+            <Field label="Min Value" unit="px">
+              <input type="number" min={0} step={0.1} value={dual.landscape.minValue}
+                onChange={(e) => setSegment('landscape', 'minValue', e.target.value)} />
+            </Field>
+            <Field label="Max Viewport" unit="px">
+              <input type="number" min={1} step={1} value={dual.landscape.maxViewport}
+                onChange={(e) => setSegment('landscape', 'maxViewport', e.target.value)} />
+            </Field>
+            <Field label="Max Value" unit="px">
+              <input type="number" min={0} step={0.1} value={dual.landscape.maxValue}
+                onChange={(e) => setSegment('landscape', 'maxValue', e.target.value)} />
+            </Field>
+          </div>
         </>
       )}
     </div>

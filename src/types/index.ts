@@ -1,18 +1,12 @@
-export type ClampMode = 'two-point' | 'estimate';
+export type ClampMode = 'single' | 'dual';
 
-export type PropertyType =
-  | 'font-size'
-  | 'margin-top'
-  | 'margin-bottom'
-  | 'padding-top'
-  | 'padding-bottom'
-  | 'gap';
+export type PropertyType = 'font-size' | 'spacing';
 
 export type FontType = 'body' | 'lead' | 'heading';
 
-// ── Config types ──
+// ── Single mode config (two design points + artboard scaling) ──
 
-export interface TwoPointConfig {
+export interface SingleConfig {
   desktopViewportWidth: number;
   desktopValue: number;
   mobileDesignWidth: number;
@@ -21,19 +15,20 @@ export interface TwoPointConfig {
   propertyType: PropertyType;
 }
 
-export interface EstimateConfig {
-  designSize: number;
-  type: FontType;
-  minFontSize: number;
-  maxFontSize: number;
-  baseViewport: number;
+// ── Dual mode config (two explicit segments) ──
+
+export interface SegmentConfig {
   minViewport: number;
+  minValue: number;
   maxViewport: number;
-  vwScale: number;
+  maxValue: number;
 }
 
-// Backward-compat alias
-export type ClampConfig = EstimateConfig;
+export interface DualConfig {
+  propertyType: PropertyType;
+  portrait: SegmentConfig;
+  landscape: SegmentConfig;
+}
 
 // ── Computed output ──
 
@@ -43,27 +38,23 @@ export interface ClampMetrics {
   clampString: string;
   minValue: number;
   maxValue: number;
-  /** vw coefficient used in calc(basePx + slopeVw * vw) */
   slopeVw: number;
-  /** px offset in calc(basePx + slopeVw * vw); 0 for estimate mode */
   basePx: number;
-  // two-point specifics
   desktopPoint: { viewport: number; value: number } | null;
-  /** Target mobile point — what actually enters the clamp formula */
   mobilePoint: { viewport: number; value: number } | null;
-  /** Original design mobile point before scaling */
   mobileDesignPoint: { viewport: number; value: number } | null;
-  /** mobileTargetWidth / mobileDesignWidth */
   mobileScale: number | null;
-  // estimate specifics
-  estimateDesktopValue: number | null;
-  estimateMobileValue: number | null;
-  rawVw: number | null;
-  adjustedVw: number | null;
-  // chart x-axis range
   chartMinVp: number;
   chartMaxVp: number;
-  // validation
+  isValid: boolean;
+  errorMessage: string | null;
+}
+
+export interface DualData {
+  portrait: ClampMetrics;
+  landscape: ClampMetrics;
+  breakpoint: number;
+  propertyType: PropertyType;
   isValid: boolean;
   errorMessage: string | null;
 }
@@ -72,15 +63,107 @@ export interface ViewportSample {
   viewport: number;
   value: number;
   isDesignPoint: boolean;
+  segment?: 'portrait' | 'landscape';
 }
 
 export interface ChartPoint {
   viewport: number;
-  value: number;
+  portrait?: number;
+  landscape?: number;
+  value?: number;
 }
 
 export interface AppState {
   mode: ClampMode;
-  twoPoint: TwoPointConfig;
-  estimate: EstimateConfig;
+  single: SingleConfig;
+  dual: DualConfig;
+  outputUnitMode: OutputUnitMode;
 }
+
+// ── Token system ──
+
+export type TokenCategory = 'typography' | 'spacing';
+
+export type TypographyTokenKey =
+  | '.txt-wrap'
+  | '.txt-title'
+  | '.page-en-title'
+  | '.page-zh-title'
+  | '.page-en-subtitle'
+  | '.page-zh-subtitle'
+  | '.page-en-label'
+  | '.page-zh-label'
+  | '.txt-body'
+  | '.txt-body p'
+  | '.page-caption'
+  | '.slogan-wrap'
+  | '.page-slogan-heading1'
+  | '.page-slogan-heading2'
+  | '.page-slogan-heading3'
+  | '.page-slogan-label';
+
+export type SpacingTokenKey =
+  | '--section-padding-px'
+  | '--section-padding-py'
+  | '--section-gutter-y'
+  | '--section-gutter-x'
+  | '--text-stack-gap';
+
+export type TokenKey = TypographyTokenKey | SpacingTokenKey;
+
+export interface ResponsiveTokenInput {
+  minWidth: number;
+  maxWidth: number;
+  minPx: number | '';
+  maxPx: number | '';
+}
+
+export interface ResponsiveTokenValue {
+  key: TokenKey;
+  category: TokenCategory;
+  mobile: ResponsiveTokenInput;
+  desktop: ResponsiveTokenInput;
+}
+
+export type TokenValueMap = Record<TokenKey, ResponsiveTokenValue>;
+
+// ── Unit Strategy types ──
+
+export type UnitStrategyCategory =
+  | 'typography-relative'
+  | 'layout-relative'
+  | 'visual-fixed';
+
+export type CSSUnit =
+  | 'rem'
+  | 'em'
+  | 'px'
+  | '%'
+  | 'vw'
+  | 'vh'
+  | 'clamp()'
+  | 'min()'
+  | 'max()'
+  | 'auto';
+
+export type OutputUnitMode = 'auto' | 'px' | 'rem';
+
+export interface UnitStrategy {
+  property: string;
+  label: string;
+  category: UnitStrategyCategory;
+  recommendedUnits: CSSUnit[];
+  allowedUnits: CSSUnit[];
+  avoidUnits: CSSUnit[];
+  reason: string;
+  notes: string;
+  examples: readonly string[];
+  variant?: string;
+  supportsClamp: boolean;
+  clampPolicy?: 'always' | 'large-only' | 'avoid';
+}
+
+export const PROPERTY_TYPE_CATEGORY: Record<PropertyType, UnitStrategyCategory> = {
+  'font-size': 'typography-relative',
+  'spacing': 'typography-relative',
+};
