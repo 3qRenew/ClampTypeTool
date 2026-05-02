@@ -17,12 +17,14 @@ export const App: React.FC = () => {
   const [page, setPage] = useState<Page>(getPage);
 
   useEffect(() => {
+    const handler = () => setPage(getPage());
+
     if (!window.location.hash) {
       window.location.hash = '/tokens';
-      return;
+    } else {
+      handler();
     }
 
-    const handler = () => setPage(getPage());
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
   }, []);
