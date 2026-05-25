@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import type { TokenKey, TypographyTokenKey, TokenValueMap, ResponsiveTokenInput } from '../types';
+import type { TokenKey, TypographyTokenKey, SpacingTokenKey, TokenValueMap, ResponsiveTokenInput, CustomTokenItem } from '../types';
 import { computeTwoPointMetrics } from '../utils/clamp';
 import { buildDefaultTokenMap, TYPOGRAPHY_TOKEN_KEYS, SPACING_TOKEN_KEYS, WRAPPER_TYPOGRAPHY_KEYS } from '../data/tokenDefaults';
 import { TokenInputGrid } from '../components/tokens/TokenInputGrid';
@@ -55,24 +55,22 @@ function computeClampForRange(
   };
 }
 
-function buildClampData(tokens: TokenValueMap): { results: ClampResultMap; mathMap: ClampMathMap } {
+function buildClampData(
+  tokens: TokenValueMap,
+  customTokens: CustomTokenItem[],
+): { results: ClampResultMap; mathMap: ClampMathMap; customResultMap: Record<string, ClampPair> } {
   const results = {} as ClampResultMap;
   const mathMap: ClampMathMap = {};
 
-  const allKeys = [...TYPOGRAPHY_TOKEN_KEYS, ...SPACING_TOKEN_KEYS] as TokenKey[];
-
-  for (const key of allKeys) {
+  for (const key of [...TYPOGRAPHY_TOKEN_KEYS, ...SPACING_TOKEN_KEYS] as TokenKey[]) {
     const token = tokens[key];
     const propType = token.category === 'typography' ? 'font-size' : 'spacing';
-
     const mobileResult = computeClampForRange(token.mobile, propType);
     const desktopResult = computeClampForRange(token.desktop, propType);
-
     results[key] = {
       mobile: mobileResult?.clampStr ?? '',
       desktop: desktopResult?.clampStr ?? '',
     };
-
     if (mobileResult || desktopResult) {
       mathMap[key] = {
         mobile: mobileResult?.math ?? null,
@@ -81,7 +79,18 @@ function buildClampData(tokens: TokenValueMap): { results: ClampResultMap; mathM
     }
   }
 
-  return { results, mathMap };
+  const customResultMap: Record<string, ClampPair> = {};
+  for (const ct of customTokens) {
+    const propType = ct.category === 'typography' ? 'font-size' : 'spacing';
+    const mobileResult = computeClampForRange(ct.mobile, propType);
+    const desktopResult = computeClampForRange(ct.desktop, propType);
+    customResultMap[ct.id] = {
+      mobile: mobileResult?.clampStr ?? '',
+      desktop: desktopResult?.clampStr ?? '',
+    };
+  }
+
+  return { results, mathMap, customResultMap };
 }
 
 function mbPxToUnit(mbPx: number | '', refFontPx: number | ''): string | null {
@@ -96,10 +105,13 @@ function buildTypoOutput(
   tokens: TokenValueMap,
   clampResults: ClampResultMap,
   typoMb: TypoMbMap,
+  customTokens: CustomTokenItem[],
+  customResultMap: Record<string, ClampPair>,
 ): string {
   const mobileTypoBlocks: string[] = [];
   const desktopTypoBlocks: string[] = [];
 
+  // Predefined typography tokens
   for (const key of TYPOGRAPHY_TOKEN_KEYS) {
     const pair = clampResults[key];
     const mb = typoMb[key];
@@ -118,6 +130,16 @@ function buildTypoOutput(
     }
   }
 
+  // Custom typography tokens
+  for (const ct of customTokens.filter((t) => t.category === 'typography' && t.key.trim())) {
+    const pair = customResultMap[ct.id] ?? { mobile: '', desktop: '' };
+    const mbUnit = mbPxToUnit(ct.mbPx, ct.desktop.maxPx);
+    const mbDecl = mbUnit ? `\n  margin-bottom: ${mbUnit};` : '';
+    if (pair.mobile) mobileTypoBlocks.push(`${ct.key} {\n  font-size: ${pair.mobile};${mbDecl}\n}`);
+    if (pair.desktop) desktopTypoBlocks.push(`${ct.key} {\n  font-size: ${pair.desktop};${mbDecl}\n}`);
+    else if (!pair.mobile && mbUnit) mobileTypoBlocks.push(`${ct.key} {\n  margin-bottom: ${mbUnit};\n}`);
+  }
+
   const parts: string[] = [];
   if (mobileTypoBlocks.length > 0) parts.push(mobileTypoBlocks.join('\n\n'));
   if (desktopTypoBlocks.length > 0) {
@@ -127,34 +149,76 @@ function buildTypoOutput(
   return parts.join('\n\n');
 }
 
-function buildSpacingOutput(clampResults: ClampResultMap): string {
-  const mobileLines: string[] = [];
-  const desktopLines: string[] = [];
+function buildSpacingOutput(
+  clampResults: ClampResultMap,
+  customTokens: CustomTokenItem[],
+  customResultMap: Record<string, ClampPair>,
+): string {
+  const get = (key: SpacingTokenKey, scope: 'mobile' | 'desktop') =>
+    clampResults[key]?.[scope] ?? '';
 
-  for (const key of SPACING_TOKEN_KEYS) {
-    const pair = clampResults[key];
-    const scssName = '$' + key.replace(/^--/, '');
-    if (pair.mobile) mobileLines.push(`${scssName}: ${pair.mobile};`);
-    if (pair.desktop) desktopLines.push(`${scssName}-lg: ${pair.desktop};`);
+  const varName = (key: SpacingTokenKey, scope: 'mobile' | 'desktop') => {
+    const base = '$' + key.replace(/^--/, '');
+    return key === '--container-max-width' ? base : `${base}-${scope}`;
+  };
+
+  const line = (key: SpacingTokenKey, scope: 'mobile' | 'desktop') => {
+    const val = get(key, scope);
+    return val ? `${varName(key, scope)}: ${val};` : null;
+  };
+
+  const groups: Array<{ comment: string; lines: Array<string | null> }> = [
+    {
+      comment: '/* Section Spacing - Mobile */',
+      lines: [line('--section-py', 'mobile'), line('--content-edge', 'mobile')],
+    },
+    {
+      comment: '/* Section Spacing - Desktop */',
+      lines: [line('--section-py', 'desktop'), line('--content-edge', 'desktop'), line('--container-max-width', 'desktop')],
+    },
+    {
+      comment: '/* Text Block Padding */',
+      lines: [line('--txt-px', 'mobile'), line('--txt-py', 'mobile'), line('--txt-px', 'desktop'), line('--txt-py', 'desktop')],
+    },
+  ];
+
+  const parts = groups
+    .map(({ comment, lines }) => {
+      const filled = lines.filter(Boolean) as string[];
+      return filled.length ? `${comment}\n${filled.join('\n')}` : null;
+    })
+    .filter(Boolean) as string[];
+
+  // Custom spacing tokens
+  const customSpacing = customTokens.filter((t) => t.category === 'spacing' && t.key.trim());
+  if (customSpacing.length > 0) {
+    const lines: string[] = [];
+    for (const ct of customSpacing) {
+      const pair = customResultMap[ct.id] ?? { mobile: '', desktop: '' };
+      const base = '$' + ct.key.replace(/^--/, '');
+      if (pair.mobile) lines.push(`${base}-mobile: ${pair.mobile};`);
+      if (pair.desktop) lines.push(`${base}-desktop: ${pair.desktop};`);
+    }
+    if (lines.length > 0) parts.push(`/* Custom */\n${lines.join('\n')}`);
   }
 
-  const parts: string[] = [];
-  if (mobileLines.length > 0) parts.push(`/* Section Spacing - Mobile */\n${mobileLines.join('\n')}`);
-  if (desktopLines.length > 0) parts.push(`/* Section Spacing - Desktop */\n${desktopLines.join('\n')}`);
   return parts.join('\n\n');
 }
 
 // ── localStorage ──
 
-const LS_TOKENS = 'clamptool-tokens-v2';
-const LS_MB = 'clamptool-typomb-v2';
+const LS_TOKENS = 'clamptool-tokens-v3';
+const LS_MB = 'clamptool-typomb-v3';
+const LS_CUSTOM = 'clamptool-custom-v1';
+
+const DEFAULT_MOBILE_INPUT = { minWidth: 390, maxWidth: 991, minPx: '' as const, maxPx: '' as const };
+const DEFAULT_DESKTOP_INPUT = { minWidth: 992, maxWidth: 1920, minPx: '' as const, maxPx: '' as const };
 
 function loadTokens(): TokenValueMap {
   try {
     const raw = localStorage.getItem(LS_TOKENS);
     if (raw) {
       const stored = JSON.parse(raw) as Partial<TokenValueMap>;
-      // Merge with defaults so newly-added token keys always exist
       return { ...buildDefaultTokenMap(), ...stored };
     }
   } catch {}
@@ -169,11 +233,20 @@ function loadTypoMb(): TypoMbMap {
   return {};
 }
 
+function loadCustomTokens(): CustomTokenItem[] {
+  try {
+    const raw = localStorage.getItem(LS_CUSTOM);
+    if (raw) return JSON.parse(raw) as CustomTokenItem[];
+  } catch {}
+  return [];
+}
+
 // ── Component ──
 
 export const TokensPage: React.FC = () => {
   const [tokens, setTokens] = useState<TokenValueMap>(loadTokens);
   const [typoMb, setTypoMb] = useState<TypoMbMap>(loadTypoMb);
+  const [customTokens, setCustomTokens] = useState<CustomTokenItem[]>(loadCustomTokens);
   const [previewDesktopWidth, setPreviewDesktopWidth] = useState(1920);
   const [previewMobileWidth, setPreviewMobileWidth] = useState(390);
   const [typoCopied, setTypoCopied] = useState(false);
@@ -182,11 +255,23 @@ export const TokensPage: React.FC = () => {
   // Auto-save to localStorage
   useEffect(() => { localStorage.setItem(LS_TOKENS, JSON.stringify(tokens)); }, [tokens]);
   useEffect(() => { localStorage.setItem(LS_MB, JSON.stringify(typoMb)); }, [typoMb]);
+  useEffect(() => { localStorage.setItem(LS_CUSTOM, JSON.stringify(customTokens)); }, [customTokens]);
 
-  const { results: clampResults, mathMap } = useMemo(() => buildClampData(tokens), [tokens]);
+  const { results: clampResults, mathMap, customResultMap } = useMemo(
+    () => buildClampData(tokens, customTokens),
+    [tokens, customTokens],
+  );
 
-  const typoOutput = useMemo(() => buildTypoOutput(tokens, clampResults, typoMb), [tokens, clampResults, typoMb]);
-  const spacingOutput = useMemo(() => buildSpacingOutput(clampResults), [clampResults]);
+  const typoOutput = useMemo(
+    () => buildTypoOutput(tokens, clampResults, typoMb, customTokens, customResultMap),
+    [tokens, clampResults, typoMb, customTokens, customResultMap],
+  );
+  const spacingOutput = useMemo(
+    () => buildSpacingOutput(clampResults, customTokens, customResultMap),
+    [clampResults, customTokens, customResultMap],
+  );
+
+  // ── Predefined token handlers ──
 
   const handleTokenChange = useCallback(
     (key: TokenKey, scope: 'mobile' | 'desktop', field: 'minPx' | 'maxPx', raw: string) => {
@@ -230,7 +315,47 @@ export const TokensPage: React.FC = () => {
   const handleClearAll = useCallback(() => {
     setTokens(buildDefaultTokenMap());
     setTypoMb({});
+    setCustomTokens([]);
   }, []);
+
+  // ── Custom token handlers ──
+
+  const handleAddCustom = useCallback((category: 'typography' | 'spacing') => {
+    const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setCustomTokens((prev) => [
+      ...prev,
+      { id, key: '', category, mobile: { ...DEFAULT_MOBILE_INPUT }, desktop: { ...DEFAULT_DESKTOP_INPUT }, mbPx: '' },
+    ]);
+  }, []);
+
+  const handleCustomKeyChange = useCallback((id: string, key: string) => {
+    setCustomTokens((prev) => prev.map((t) => (t.id === id ? { ...t, key } : t)));
+  }, []);
+
+  const handleCustomChange = useCallback(
+    (id: string, scope: 'mobile' | 'desktop', field: 'minPx' | 'maxPx', raw: string) => {
+      setCustomTokens((prev) =>
+        prev.map((t) =>
+          t.id === id
+            ? { ...t, [scope]: { ...t[scope], [field]: raw === '' ? '' : parseFloat(raw) } }
+            : t,
+        ),
+      );
+    },
+    [],
+  );
+
+  const handleCustomMbChange = useCallback((id: string, raw: string) => {
+    setCustomTokens((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, mbPx: raw === '' ? '' : parseFloat(raw) } : t)),
+    );
+  }, []);
+
+  const handleCustomDelete = useCallback((id: string) => {
+    setCustomTokens((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // ── Copy handlers ──
 
   const handleCopyTypo = () => {
     navigator.clipboard.writeText(typoOutput).then(() => {
@@ -284,10 +409,17 @@ export const TokensPage: React.FC = () => {
           <TokenInputGrid
             tokens={tokens}
             clampResults={clampResults}
+            customTokens={customTokens}
+            customResultMap={customResultMap}
             typoMb={typoMb}
             onTokenChange={handleTokenChange}
             onMbChange={handleMbChange}
             onClearToken={handleClearToken}
+            onAddCustom={handleAddCustom}
+            onCustomKeyChange={handleCustomKeyChange}
+            onCustomChange={handleCustomChange}
+            onCustomMbChange={handleCustomMbChange}
+            onCustomDelete={handleCustomDelete}
           />
         </div>
         <div className="tokens-preview-col">

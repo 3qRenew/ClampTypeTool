@@ -2,6 +2,7 @@ import React from 'react';
 import { getClampedValueAtViewport } from '../../utils/clamp';
 import type { ClampMathPair } from '../../pages/TokensPage';
 import type { TypoMbMap } from './TokenInputGrid';
+import type { TypographyTokenKey } from '../../types';
 
 // ── Internal types ──
 
@@ -15,11 +16,11 @@ interface ClampMath {
 type ClampMathMap = Partial<Record<string, ClampMathPair>>;
 
 interface ResolvedSpacing {
-  paddingX: number;
-  paddingY: number;
-  gutterX: number;
-  gutterY: number;
-  textStackGap: number;
+  sectionPy: number;
+  contentEdge: number;
+  containerMaxWidth: number;
+  txtPx: number;
+  txtPy: number;
 }
 
 interface ResolvedTypography {
@@ -63,11 +64,11 @@ function resolveSpacing(
   const get = (key: string) =>
     resolveAt(getMath(clampMathMap[key], scope), viewport) ?? 0;
   return {
-    paddingX: get('--section-padding-px'),
-    paddingY: get('--section-padding-py'),
-    gutterX: get('--section-gutter-x'),
-    gutterY: get('--section-gutter-y'),
-    textStackGap: get('--text-stack-gap'),
+    sectionPy: get('--section-py'),
+    contentEdge: get('--content-edge'),
+    containerMaxWidth: get('--container-max-width'),
+    txtPx: get('--txt-px'),
+    txtPy: get('--txt-py'),
   };
 }
 
@@ -88,7 +89,7 @@ function resolveTypography(
     sloganH2: get('.page-slogan-heading2'),
     sloganH3: get('.page-slogan-heading3'),
     sloganLabel: get('.page-slogan-label'),
-    bodyP: get('.txt-body p'),
+    bodyP: get('body'),
     caption: get('.page-caption'),
   };
 }
@@ -105,7 +106,7 @@ interface TextLineProps {
 const TextLine: React.FC<TextLineProps> = ({ size, children, color = '#d4d4d4', marginBottom }) => {
   if (!size) return null;
   return (
-    <div style={{ fontSize: size, color, lineHeight: 1.3, marginBottom: 0, position: 'relative', paddingBottom: marginBottom }}>
+    <div style={{ fontSize: size, color, lineHeight: 1.3, position: 'relative', paddingBottom: marginBottom }}>
       {children}
       {marginBottom > 0 && (
         <div style={{
@@ -135,98 +136,90 @@ interface CanvasProps {
 const PreviewCanvas: React.FC<CanvasProps> = ({
   label, displayWidth, isMobile, spacing, typo, typoMb, scale,
 }) => {
-  const displayHeight = isMobile ? displayWidth * 1.9 : displayWidth * 0.46;
+  // aspect-ratio: 16/9 (desktop) | 9/16 (mobile)
+  const displayHeight = isMobile
+    ? Math.round(displayWidth * 16 / 9)
+    : Math.round(displayWidth * 9 / 16);
 
-  // Cap paddings so content area never collapses to zero
-  const paddingXScaled = Math.min(spacing.paddingX * scale, displayWidth * 0.32);
-  const paddingYScaled = Math.min(spacing.paddingY * scale, displayHeight * 0.28);
-  const gutterXScaled = Math.min(spacing.gutterX * scale, (displayWidth - 2 * paddingXScaled) * 0.3);
-  const gutterYScaled = Math.max(spacing.gutterY * scale, isMobile ? 8 : 0);
+  // Scale & cap spacing so the canvas doesn't collapse
+  const sectionPy  = Math.min(spacing.sectionPy  * scale, displayHeight * 0.22);
+  const contentEdge = Math.min(spacing.contentEdge * scale, displayWidth  * 0.32);
+  const txtPx = Math.min(spacing.txtPx * scale, (displayWidth  - 2 * contentEdge) * 0.25);
+  const txtPy = Math.min(spacing.txtPy * scale, (displayHeight - 2 * sectionPy)   * 0.22);
 
-  // Per-token margin-bottom (scaled); fall back to --text-stack-gap then 0
-  const globalGapScaled = spacing.textStackGap * scale;
-  const mb = (key: string) => {
-    const v = typoMb[key as keyof typeof typoMb];
-    if (v !== '' && v !== undefined) return (v as number) * scale;
-    return globalGapScaled;
+  const containerLeft  = contentEdge;
+  const containerWidth = Math.max(displayWidth - 2 * contentEdge, 16);
+
+  // margin-bottom helper — fall back to 0 if not set
+  const mb = (key: string): number => {
+    const v = typoMb[key as TypographyTokenKey];
+    return v !== '' && v !== undefined ? (v as number) * scale : 0;
   };
 
-  // .txt-title and .txt-body mb are wrapper gaps — rendered as spacer divs
   const txtTitleMb = mb('.txt-title');
-  const txtBodyMb = mb('.txt-body');
+  const txtBodyMb  = mb('.txt-body');
+  const fs = (v: number | null) => (v ? v * scale : null);
 
-  const textColumn = (
-    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-      {/* .txt-title block */}
-      <TextLine size={typo.enLabel && typo.enLabel * scale} color="#60a5fa" marginBottom={mb('.page-en-label')}>
-        EN LABEL
-      </TextLine>
-      <TextLine size={typo.zhLabel && typo.zhLabel * scale} color="#a0a0a0" marginBottom={mb('.page-zh-label')}>
-        中文標籤
-      </TextLine>
-      <TextLine size={typo.enTitle && typo.enTitle * scale} color="#ffffff" marginBottom={mb('.page-en-title')}>
-        English Title
-      </TextLine>
-      <TextLine size={typo.zhTitle && typo.zhTitle * scale} color="#f0f0f0" marginBottom={mb('.page-zh-title')}>
-        中文主標題
-      </TextLine>
-      <TextLine size={typo.zhSubtitle && typo.zhSubtitle * scale} color="#c0c0c0" marginBottom={mb('.page-zh-subtitle')}>
-        中文副標題文字
-      </TextLine>
-      <TextLine size={typo.enSubtitle && typo.enSubtitle * scale} color="#a8a8a8" marginBottom={0}>
-        English Subtitle
-      </TextLine>
-      {/* .txt-title margin-bottom spacer */}
-      {txtTitleMb > 0 && (
-        <div style={{ height: txtTitleMb, background: 'rgba(251,191,36,0.18)', position: 'relative' }}>
-          <span style={{ position: 'absolute', right: 0, top: 0, fontSize: Math.max(7 * scale, 6), color: '#fbbf24', fontFamily: 'monospace' }}>.txt-title mb</span>
+  const textContent = (
+    <div style={{ overflow: 'hidden', position: 'relative' }}>
+      {/* txt-py top teal slab */}
+      {txtPy > 0 && (
+        <div style={{ height: txtPy, background: 'rgba(20,184,166,0.18)', position: 'relative', zIndex: 1 }}>
+          <span style={{ position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)', fontSize: Math.max(6 * scale, 6), color: 'rgba(20,184,166,0.7)', fontFamily: 'monospace' }}>
+            txt-py
+          </span>
         </div>
       )}
-      {/* .txt-body block */}
-      <TextLine size={typo.bodyP && typo.bodyP * scale} color="#888" marginBottom={0}>
-        內文段落 Body paragraph text goes here.
-      </TextLine>
-      {/* .txt-body margin-bottom spacer */}
-      {txtBodyMb > 0 && (
-        <div style={{ height: txtBodyMb, background: 'rgba(251,191,36,0.12)', position: 'relative' }}>
-          <span style={{ position: 'absolute', right: 0, top: 0, fontSize: Math.max(7 * scale, 6), color: '#fbbf24', fontFamily: 'monospace' }}>.txt-body mb</span>
-        </div>
-      )}
-      {/* caption */}
-      <TextLine size={typo.caption && typo.caption * scale} color="#666" marginBottom={0}>
-        圖片僅供參考，實際以現場為準
-      </TextLine>
-      {/* slogan block */}
-      <TextLine size={typo.sloganH1 && typo.sloganH1 * scale} color="#e0e0e0" marginBottom={mb('.page-slogan-heading1')}>
-        Slogan Heading 1
-      </TextLine>
-      <TextLine size={typo.sloganH2 && typo.sloganH2 * scale} color="#d0d0d0" marginBottom={mb('.page-slogan-heading2')}>
-        Slogan Heading 2
-      </TextLine>
-      <TextLine size={typo.sloganH3 && typo.sloganH3 * scale} color="#c8c8c8" marginBottom={mb('.page-slogan-heading3')}>
-        Slogan Heading 3
-      </TextLine>
-      <TextLine size={typo.sloganLabel && typo.sloganLabel * scale} color="#8888aa" marginBottom={mb('.page-slogan-label')}>
-        Slogan Label
-      </TextLine>
-    </div>
-  );
 
-  const imagePlaceholder = (
-    <div style={{
-      flex: isMobile ? 'none' : 1,
-      height: isMobile ? displayWidth * 0.48 : undefined,
-      background: '#1a2030',
-      borderRadius: 3,
-      border: '1px solid #2a3550',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-    }}>
-      <span style={{ fontSize: Math.max(10 * scale, 8), color: '#3a4a65', fontFamily: 'monospace' }}>
-        image
-      </span>
+      {/* Inner content with txt-px side padding */}
+      <div style={{ paddingLeft: txtPx, paddingRight: txtPx, position: 'relative' }}>
+        {/* txt-px left/right teal slabs */}
+        {txtPx > 0 && <>
+          <div style={{ position: 'absolute', inset: '0 auto 0 0', width: txtPx, background: 'rgba(20,184,166,0.12)', pointerEvents: 'none', zIndex: 1 }} />
+          <div style={{ position: 'absolute', inset: '0 0 0 auto', width: txtPx, background: 'rgba(20,184,166,0.12)', pointerEvents: 'none', zIndex: 1 }} />
+        </>}
+
+        {/* .txt-title block */}
+        <TextLine size={fs(typo.enLabel)}    color="#60a5fa"  marginBottom={mb('.page-en-label')}>EN LABEL</TextLine>
+        <TextLine size={fs(typo.zhLabel)}    color="#a0a0a0"  marginBottom={mb('.page-zh-label')}>中文標籤</TextLine>
+        <TextLine size={fs(typo.enTitle)}    color="#ffffff"  marginBottom={mb('.page-en-title')}>English Title</TextLine>
+        <TextLine size={fs(typo.zhTitle)}    color="#f0f0f0"  marginBottom={mb('.page-zh-title')}>中文主標題</TextLine>
+        <TextLine size={fs(typo.zhSubtitle)} color="#c0c0c0"  marginBottom={mb('.page-zh-subtitle')}>中文副標題文字</TextLine>
+        <TextLine size={fs(typo.enSubtitle)} color="#a8a8a8"  marginBottom={0}>English Subtitle</TextLine>
+
+        {/* .txt-title wrapper margin-bottom spacer */}
+        {txtTitleMb > 0 && (
+          <div style={{ height: txtTitleMb, background: 'rgba(251,191,36,0.18)', position: 'relative' }}>
+            <span style={{ position: 'absolute', right: 0, top: 0, fontSize: Math.max(6 * scale, 6), color: '#fbbf24', fontFamily: 'monospace' }}>.txt-title mb</span>
+          </div>
+        )}
+
+        {/* .txt-body block */}
+        <TextLine size={fs(typo.bodyP)}   color="#888" marginBottom={0}>
+          內文段落 Body paragraph text.
+        </TextLine>
+
+        {txtBodyMb > 0 && (
+          <div style={{ height: txtBodyMb, background: 'rgba(251,191,36,0.12)', position: 'relative' }}>
+            <span style={{ position: 'absolute', right: 0, top: 0, fontSize: Math.max(6 * scale, 6), color: '#fbbf24', fontFamily: 'monospace' }}>.txt-body mb</span>
+          </div>
+        )}
+
+        <TextLine size={fs(typo.caption)} color="#666" marginBottom={0}>
+          圖片僅供參考，實際以現場為準
+        </TextLine>
+
+        {/* slogan block */}
+        <TextLine size={fs(typo.sloganH1)}    color="#e0e0e0" marginBottom={mb('.page-slogan-heading1')}>Slogan Heading 1</TextLine>
+        <TextLine size={fs(typo.sloganH2)}    color="#d0d0d0" marginBottom={mb('.page-slogan-heading2')}>Slogan Heading 2</TextLine>
+        <TextLine size={fs(typo.sloganH3)}    color="#c8c8c8" marginBottom={mb('.page-slogan-heading3')}>Slogan Heading 3</TextLine>
+        <TextLine size={fs(typo.sloganLabel)} color="#8888aa" marginBottom={mb('.page-slogan-label')}>Slogan Label</TextLine>
+      </div>
+
+      {/* txt-py bottom teal slab */}
+      {txtPy > 0 && (
+        <div style={{ height: txtPy, background: 'rgba(20,184,166,0.18)' }} />
+      )}
     </div>
   );
 
@@ -243,45 +236,48 @@ const PreviewCanvas: React.FC<CanvasProps> = ({
         position: 'relative',
         flexShrink: 0,
       }}>
-        {/* Blue section-padding overlays */}
-        {paddingYScaled > 0 && <>
-          <div style={{ position: 'absolute', inset: '0 0 auto 0', height: paddingYScaled, background: 'rgba(59,130,246,0.18)', zIndex: 2, pointerEvents: 'none' }} />
-          <div style={{ position: 'absolute', inset: 'auto 0 0 0', height: paddingYScaled, background: 'rgba(59,130,246,0.18)', zIndex: 2, pointerEvents: 'none' }} />
-        </>}
-        {paddingXScaled > 0 && <>
-          <div style={{ position: 'absolute', inset: '0 auto 0 0', width: paddingXScaled, background: 'rgba(59,130,246,0.18)', zIndex: 2, pointerEvents: 'none' }} />
-          <div style={{ position: 'absolute', inset: '0 0 0 auto', width: paddingXScaled, background: 'rgba(59,130,246,0.18)', zIndex: 2, pointerEvents: 'none' }} />
+        {/* ── section-py: top + bottom blue slabs ── */}
+        {sectionPy > 0 && <>
+          <div style={{ position: 'absolute', inset: '0 0 auto 0', height: sectionPy, background: 'rgba(59,130,246,0.22)', zIndex: 3, pointerEvents: 'none' }}>
+            <span style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', fontSize: Math.max(6 * scale, 6), color: 'rgba(96,165,250,0.75)', fontFamily: 'monospace' }}>section-py</span>
+          </div>
+          <div style={{ position: 'absolute', inset: 'auto 0 0 0', height: sectionPy, background: 'rgba(59,130,246,0.22)', zIndex: 3, pointerEvents: 'none' }} />
         </>}
 
-        {/* Content area inside padding */}
+        {/* ── content-edge: left + right orange slabs ── */}
+        {contentEdge > 0 && <>
+          <div style={{ position: 'absolute', inset: '0 auto 0 0', width: contentEdge, background: 'rgba(251,146,60,0.20)', zIndex: 3, pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', inset: '0 0 0 auto', width: contentEdge, background: 'rgba(251,146,60,0.20)', zIndex: 3, pointerEvents: 'none' }} />
+        </>}
+
+        {/* ── container area: clipped region between edges ── */}
         <div style={{
           position: 'absolute',
-          inset: `${paddingYScaled}px ${paddingXScaled}px`,
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
+          top: sectionPy,
+          left: containerLeft,
+          width: containerWidth,
+          bottom: sectionPy,
           overflow: 'hidden',
-          gap: isMobile ? gutterYScaled : 0,
         }}>
-          {isMobile ? (
-            <>
-              {textColumn}
-              {imagePlaceholder}
-            </>
-          ) : (
-            <>
-              {imagePlaceholder}
-              {/* Purple gutter-x */}
-              {gutterXScaled > 0 && (
-                <div style={{
-                  width: gutterXScaled,
-                  flexShrink: 0,
-                  background: 'rgba(139,92,246,0.25)',
-                }} />
-              )}
-              {textColumn}
-            </>
-          )}
+          {textContent}
         </div>
+
+        {/* ── container-max-width label (desktop only) ── */}
+        {!isMobile && spacing.containerMaxWidth > 0 && (
+          <div style={{
+            position: 'absolute',
+            bottom: sectionPy + 4,
+            left: containerLeft,
+            width: containerWidth,
+            textAlign: 'center',
+            pointerEvents: 'none',
+            zIndex: 4,
+          }}>
+            <span style={{ fontSize: Math.max(6 * scale, 7), color: 'rgba(251,146,60,0.6)', fontFamily: 'monospace' }}>
+              container {Math.round(spacing.containerMaxWidth)}px
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -293,23 +289,24 @@ export const TokenLayoutPreview: React.FC<Props> = ({
   clampMathMap, typoMb, desktopWidth, mobileWidth,
 }) => {
   const desktopSpacing = resolveSpacing('desktop', desktopWidth, clampMathMap);
-  const mobileSpacing = resolveSpacing('mobile', mobileWidth, clampMathMap);
-  const desktopTypo = resolveTypography('desktop', desktopWidth, clampMathMap);
-  const mobileTypo = resolveTypography('mobile', mobileWidth, clampMathMap);
+  const mobileSpacing  = resolveSpacing('mobile',  mobileWidth,  clampMathMap);
+  const desktopTypo    = resolveTypography('desktop', desktopWidth, clampMathMap);
+  const mobileTypo     = resolveTypography('mobile',  mobileWidth,  clampMathMap);
 
   const DESKTOP_DISPLAY = 780;
-  const MOBILE_DISPLAY = 220;
+  const MOBILE_DISPLAY  = 220;
 
   return (
     <div className="token-layout-preview">
       <div className="token-preview-legend">
-        <span className="tpl-legend tpl-blue">section-padding</span>
-        <span className="tpl-legend tpl-purple">gutter-x</span>
+        <span className="tpl-legend tpl-blue">section-py</span>
+        <span className="tpl-legend tpl-orange">content-edge</span>
+        <span className="tpl-legend tpl-teal">txt-padding</span>
         <span className="tpl-legend tpl-green">margin-bottom</span>
       </div>
       <div className="token-preview-canvases">
         <PreviewCanvas
-          label={`Desktop (${desktopWidth}px)`}
+          label={`Desktop (${desktopWidth}px) · 16/9`}
           displayWidth={DESKTOP_DISPLAY}
           isMobile={false}
           spacing={desktopSpacing}
@@ -318,7 +315,7 @@ export const TokenLayoutPreview: React.FC<Props> = ({
           scale={DESKTOP_DISPLAY / desktopWidth}
         />
         <PreviewCanvas
-          label={`Mobile (${mobileWidth}px)`}
+          label={`Mobile (${mobileWidth}px) · 9/16`}
           displayWidth={MOBILE_DISPLAY}
           isMobile={true}
           spacing={mobileSpacing}

@@ -94,7 +94,7 @@ export type TypographyTokenKey =
   | '.page-en-label'
   | '.page-zh-label'
   | '.txt-body'
-  | '.txt-body p'
+  | 'body'
   | '.page-caption'
   | '.slogan-wrap'
   | '.page-slogan-heading1'
@@ -103,13 +103,22 @@ export type TypographyTokenKey =
   | '.page-slogan-label';
 
 export type SpacingTokenKey =
-  | '--section-padding-px'
-  | '--section-padding-py'
-  | '--section-gutter-y'
-  | '--section-gutter-x'
-  | '--text-stack-gap';
+  | '--section-py'
+  | '--content-edge'
+  | '--container-max-width'
+  | '--txt-px'
+  | '--txt-py';
 
 export type TokenKey = TypographyTokenKey | SpacingTokenKey;
+
+export interface CustomTokenItem {
+  id: string;
+  key: string;
+  category: 'typography' | 'spacing';
+  mobile: ResponsiveTokenInput;
+  desktop: ResponsiveTokenInput;
+  mbPx: number | '';
+}
 
 export interface ResponsiveTokenInput {
   minWidth: number;

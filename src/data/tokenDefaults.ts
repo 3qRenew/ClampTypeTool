@@ -10,7 +10,7 @@ export const TYPOGRAPHY_TOKEN_KEYS: TypographyTokenKey[] = [
   '.page-en-label',
   '.page-zh-label',
   '.txt-body',
-  '.txt-body p',
+  'body',
   '.page-caption',
   '.slogan-wrap',
   '.page-slogan-heading1',
@@ -27,11 +27,11 @@ export const WRAPPER_TYPOGRAPHY_KEYS = new Set<TypographyTokenKey>([
 ]);
 
 export const SPACING_TOKEN_KEYS: SpacingTokenKey[] = [
-  '--section-padding-px',
-  '--section-padding-py',
-  '--section-gutter-y',
-  '--section-gutter-x',
-  '--text-stack-gap',
+  '--section-py',
+  '--content-edge',
+  '--container-max-width',
+  '--txt-px',
+  '--txt-py',
 ];
 
 function makeToken(

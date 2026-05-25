@@ -1711,6 +1711,76 @@ th.token-cell-desktop-sep {
   border-color: var(--red);
 }
 
+/* Custom token: key input (replaces monospace label) */
+.token-key-input {
+  width: 100%;
+  padding: 3px 7px;
+  background: rgba(96, 165, 250, 0.06);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-size: 11px;
+  font-family: var(--mono);
+  outline: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.token-key-input:focus {
+  border-color: var(--border-focus);
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.token-key-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Custom token: delete row button (always slightly red) */
+.token-delete-btn {
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  color: rgba(248, 113, 113, 0.45);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.token-delete-btn:hover {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+/* Custom row: subtle left accent */
+.token-row--custom td:first-child {
+  border-left: 2px solid rgba(96, 165, 250, 0.2);
+}
+
+/* Add token button row */
+.token-add-row {
+  padding: 8px 6px 2px;
+}
+
+.token-add-btn {
+  padding: 5px 14px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--mono);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+  letter-spacing: 0.02em;
+}
+
+.token-add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  border-style: solid;
+}
+
 /* ── Token Layout Preview ── */
 
 .token-layout-preview {
@@ -1738,9 +1808,14 @@ th.token-cell-desktop-sep {
   color: #60a5fa;
 }
 
-.tpl-purple {
-  background: rgba(139,92,246,0.15);
-  color: #a78bfa;
+.tpl-orange {
+  background: rgba(251,146,60,0.15);
+  color: #fb923c;
+}
+
+.tpl-teal {
+  background: rgba(20,184,166,0.15);
+  color: #2dd4bf;
 }
 
 .tpl-green {
