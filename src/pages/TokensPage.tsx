@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { TokenKey, TypographyTokenKey, SpacingTokenKey, TokenValueMap, ResponsiveTokenInput, CustomTokenItem } from '../types';
 import { computeTwoPointMetrics } from '../utils/clamp';
 import { buildDefaultTokenMap, TYPOGRAPHY_TOKEN_KEYS, SPACING_TOKEN_KEYS, WRAPPER_TYPOGRAPHY_KEYS } from '../data/tokenDefaults';
@@ -219,7 +219,23 @@ function loadTokens(): TokenValueMap {
     const raw = localStorage.getItem(LS_TOKENS);
     if (raw) {
       const stored = JSON.parse(raw) as Partial<TokenValueMap>;
-      return { ...buildDefaultTokenMap(), ...stored };
+      const map = { ...buildDefaultTokenMap(), ...stored };
+      // --container-max-width is desktop-only:
+      //   1. always wipe mobile inputs (never used)
+      //   2. wipe desktop minPx if it looks like a spinner accident (< 100 is never a valid max-width)
+      const cmw = map['--container-max-width'];
+      map['--container-max-width'] = {
+        ...cmw,
+        mobile: { ...cmw.mobile, minPx: '', maxPx: '' },
+        desktop: {
+          ...cmw.desktop,
+          minPx:
+            typeof cmw.desktop.minPx === 'number' && cmw.desktop.minPx < 100
+              ? ''
+              : cmw.desktop.minPx,
+        },
+      };
+      return map;
     }
   } catch {}
   return buildDefaultTokenMap();
@@ -247,6 +263,10 @@ export const TokensPage: React.FC = () => {
   const [tokens, setTokens] = useState<TokenValueMap>(loadTokens);
   const [typoMb, setTypoMb] = useState<TypoMbMap>(loadTypoMb);
   const [customTokens, setCustomTokens] = useState<CustomTokenItem[]>(loadCustomTokens);
+
+  // Track which minPx fields were set by auto-fill (key = `tokenKey:scope`).
+  // Auto-filled values continue to update while maxPx changes; manually-typed values are never overwritten.
+  const autoFilledKeys = useRef<Set<string>>(new Set());
   const [previewDesktopWidth, setPreviewDesktopWidth] = useState(1920);
   const [previewMobileWidth, setPreviewMobileWidth] = useState(390);
   const [typoCopied, setTypoCopied] = useState(false);
@@ -275,16 +295,26 @@ export const TokensPage: React.FC = () => {
 
   const handleTokenChange = useCallback(
     (key: TokenKey, scope: 'mobile' | 'desktop', field: 'minPx' | 'maxPx', raw: string) => {
-      setTokens((prev) => ({
-        ...prev,
-        [key]: {
-          ...prev[key],
-          [scope]: {
-            ...prev[key][scope],
-            [field]: raw === '' ? '' : parseFloat(raw),
-          },
-        },
-      }));
+      const autoKey = `${key}:${scope}`;
+      setTokens((prev) => {
+        const scopeData = prev[key][scope];
+        const newVal = raw === '' ? '' : parseFloat(raw);
+        const updated = { ...scopeData, [field]: newVal };
+
+        if (field === 'maxPx' && raw !== '') {
+          // Auto-fill minPx if it's empty OR was previously auto-filled by us
+          if (scopeData.minPx === '' || autoFilledKeys.current.has(autoKey)) {
+            updated.minPx = parseFloat((parseFloat(raw) * scopeData.minWidth / scopeData.maxWidth).toFixed(1));
+            autoFilledKeys.current.add(autoKey);
+          }
+        }
+        if (field === 'minPx') {
+          // User manually edited minPx — stop overwriting it
+          autoFilledKeys.current.delete(autoKey);
+        }
+
+        return { ...prev, [key]: { ...prev[key], [scope]: updated } };
+      });
     },
     [],
   );
@@ -297,6 +327,8 @@ export const TokensPage: React.FC = () => {
   }, []);
 
   const handleClearToken = useCallback((key: TokenKey) => {
+    autoFilledKeys.current.delete(`${key}:mobile`);
+    autoFilledKeys.current.delete(`${key}:desktop`);
     setTokens((prev) => ({
       ...prev,
       [key]: {
@@ -313,6 +345,7 @@ export const TokensPage: React.FC = () => {
   }, []);
 
   const handleClearAll = useCallback(() => {
+    autoFilledKeys.current.clear();
     setTokens(buildDefaultTokenMap());
     setTypoMb({});
     setCustomTokens([]);
@@ -334,12 +367,25 @@ export const TokensPage: React.FC = () => {
 
   const handleCustomChange = useCallback(
     (id: string, scope: 'mobile' | 'desktop', field: 'minPx' | 'maxPx', raw: string) => {
+      const autoKey = `${id}:${scope}`;
       setCustomTokens((prev) =>
-        prev.map((t) =>
-          t.id === id
-            ? { ...t, [scope]: { ...t[scope], [field]: raw === '' ? '' : parseFloat(raw) } }
-            : t,
-        ),
+        prev.map((t) => {
+          if (t.id !== id) return t;
+          const scopeData = t[scope];
+          const updated = { ...scopeData, [field]: raw === '' ? '' : parseFloat(raw) };
+
+          if (field === 'maxPx' && raw !== '') {
+            if (scopeData.minPx === '' || autoFilledKeys.current.has(autoKey)) {
+              updated.minPx = parseFloat((parseFloat(raw) * scopeData.minWidth / scopeData.maxWidth).toFixed(1));
+              autoFilledKeys.current.add(autoKey);
+            }
+          }
+          if (field === 'minPx') {
+            autoFilledKeys.current.delete(autoKey);
+          }
+
+          return { ...t, [scope]: updated };
+        }),
       );
     },
     [],
@@ -352,6 +398,8 @@ export const TokensPage: React.FC = () => {
   }, []);
 
   const handleCustomDelete = useCallback((id: string) => {
+    autoFilledKeys.current.delete(`${id}:mobile`);
+    autoFilledKeys.current.delete(`${id}:desktop`);
     setCustomTokens((prev) => prev.filter((t) => t.id !== id));
   }, []);
 

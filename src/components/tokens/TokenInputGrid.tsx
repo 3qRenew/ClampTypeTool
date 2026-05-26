@@ -87,25 +87,25 @@ const TypoRow: React.FC<TypoRowProps> = ({ token, clampPair, mbPx, isWrapper, on
       ) : (
         <>
           <td className="token-cell">
-            <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+            <input type="number" className="token-input" min={0} step="any" placeholder="—"
               value={token.mobile.minPx} onChange={(e) => onChange('mobile', 'minPx', e.target.value)} />
           </td>
           <td className="token-cell">
-            <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+            <input type="number" className="token-input" min={0} step="any" placeholder="—"
               value={token.mobile.maxPx} onChange={(e) => onChange('mobile', 'maxPx', e.target.value)} />
           </td>
           <td className="token-cell token-cell-desktop-sep">
-            <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+            <input type="number" className="token-input" min={0} step="any" placeholder="—"
               value={token.desktop.minPx} onChange={(e) => onChange('desktop', 'minPx', e.target.value)} />
           </td>
           <td className="token-cell">
-            <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+            <input type="number" className="token-input" min={0} step="any" placeholder="—"
               value={token.desktop.maxPx} onChange={(e) => onChange('desktop', 'maxPx', e.target.value)} />
           </td>
         </>
       )}
       <td className="token-cell token-cell-desktop-sep token-mb-cell">
-        <input type="number" className="token-input token-input-mb" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input token-input-mb" min={0} step="any" placeholder="—"
           value={mbPx ?? ''} onChange={(e) => onMbChange(e.target.value)} />
         {mbNum !== null && (
           <span className="token-mb-em">→ {mbNum}{mbUnit}</span>
@@ -204,23 +204,23 @@ const CustomTypoRow: React.FC<CustomTypoRowProps> = ({ item, clampPair, onKeyCha
         />
       </td>
       <td className="token-cell">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={item.mobile.minPx} onChange={(e) => onChange('mobile', 'minPx', e.target.value)} />
       </td>
       <td className="token-cell">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={item.mobile.maxPx} onChange={(e) => onChange('mobile', 'maxPx', e.target.value)} />
       </td>
       <td className="token-cell token-cell-desktop-sep">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={item.desktop.minPx} onChange={(e) => onChange('desktop', 'minPx', e.target.value)} />
       </td>
       <td className="token-cell">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={item.desktop.maxPx} onChange={(e) => onChange('desktop', 'maxPx', e.target.value)} />
       </td>
       <td className="token-cell token-cell-desktop-sep token-mb-cell">
-        <input type="number" className="token-input token-input-mb" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input token-input-mb" min={0} step="any" placeholder="—"
           value={item.mbPx ?? ''} onChange={(e) => onMbChange(e.target.value)} />
         {mbNum !== null && <span className="token-mb-em">→ {mbNum}{mbUnit}</span>}
       </td>
@@ -258,13 +258,13 @@ const SpacingRow: React.FC<SpacingRowProps> = ({ token, clampPair, onChange, onC
   const hasMobile = clampPair.mobile !== '';
   const hasDesktop = clampPair.desktop !== '';
   const hasAny = hasMobile || hasDesktop;
+  const isDesktopOnly = token.key === '--container-max-width';
 
   const buildCopyText = () => {
     const base = '$' + (token.key as string).replace(/^--/, '');
-    const isNoSuffix = token.key === '--container-max-width';
     const lines: string[] = [];
-    if (hasMobile && !isNoSuffix) lines.push(`${base}-mobile: ${clampPair.mobile};`);
-    if (hasDesktop) lines.push(`${isNoSuffix ? base : `${base}-desktop`}: ${clampPair.desktop};`);
+    if (hasMobile && !isDesktopOnly) lines.push(`${base}-mobile: ${clampPair.mobile};`);
+    if (hasDesktop) lines.push(`${isDesktopOnly ? base : `${base}-desktop`}: ${clampPair.desktop};`);
     return lines.join('\n');
   };
 
@@ -278,28 +278,45 @@ const SpacingRow: React.FC<SpacingRowProps> = ({ token, clampPair, onChange, onC
 
   return (
     <tr className="token-row">
-      <td className="token-key td-mono">{token.key}</td>
-      <td className="token-cell">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
-          value={token.mobile.minPx} onChange={(e) => onChange('mobile', 'minPx', e.target.value)} />
+      <td className="token-key td-mono">
+        {token.key}
+        {isDesktopOnly && <span className="token-desktop-only-badge">desktop</span>}
       </td>
-      <td className="token-cell">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
-          value={token.mobile.maxPx} onChange={(e) => onChange('mobile', 'maxPx', e.target.value)} />
-      </td>
+      {isDesktopOnly ? (
+        <td className="token-cell token-cell-disabled" colSpan={2}>
+          <span className="token-disabled-note">—</span>
+        </td>
+      ) : (
+        <>
+          <td className="token-cell">
+            <input type="number" className="token-input" min={0} step="any" placeholder="—"
+              value={token.mobile.minPx} onChange={(e) => onChange('mobile', 'minPx', e.target.value)} />
+          </td>
+          <td className="token-cell">
+            <input type="number" className="token-input" min={0} step="any" placeholder="—"
+              value={token.mobile.maxPx} onChange={(e) => onChange('mobile', 'maxPx', e.target.value)} />
+          </td>
+        </>
+      )}
       <td className="token-cell token-cell-desktop-sep">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={token.desktop.minPx} onChange={(e) => onChange('desktop', 'minPx', e.target.value)} />
       </td>
       <td className="token-cell">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={token.desktop.maxPx} onChange={(e) => onChange('desktop', 'maxPx', e.target.value)} />
       </td>
-      <td className="token-cell token-result-cell">
-        <code className={`token-clamp-code${hasMobile ? ' has-value' : ''}`}>
-          {hasMobile ? clampPair.mobile : '—'}
-        </code>
-      </td>
+      {isDesktopOnly ? (
+        <td className="token-cell token-cell-disabled token-result-cell">
+          <span className="token-disabled-note">—</span>
+        </td>
+      ) : (
+        <td className="token-cell token-result-cell">
+          <code className={`token-clamp-code${hasMobile ? ' has-value' : ''}`}>
+            {hasMobile ? clampPair.mobile : '—'}
+          </code>
+        </td>
+      )}
       <td className="token-cell token-result-cell token-cell-desktop-sep">
         <code className={`token-clamp-code${hasDesktop ? ' has-value' : ''}`}>
           {hasDesktop ? clampPair.desktop : '—'}
@@ -367,19 +384,19 @@ const CustomSpacingRow: React.FC<CustomSpacingRowProps> = ({ item, clampPair, on
         />
       </td>
       <td className="token-cell">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={item.mobile.minPx} onChange={(e) => onChange('mobile', 'minPx', e.target.value)} />
       </td>
       <td className="token-cell">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={item.mobile.maxPx} onChange={(e) => onChange('mobile', 'maxPx', e.target.value)} />
       </td>
       <td className="token-cell token-cell-desktop-sep">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={item.desktop.minPx} onChange={(e) => onChange('desktop', 'minPx', e.target.value)} />
       </td>
       <td className="token-cell">
-        <input type="number" className="token-input" min={0} step={0.5} placeholder="—"
+        <input type="number" className="token-input" min={0} step="any" placeholder="—"
           value={item.desktop.maxPx} onChange={(e) => onChange('desktop', 'maxPx', e.target.value)} />
       </td>
       <td className="token-cell token-result-cell">
